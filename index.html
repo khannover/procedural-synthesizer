@@ -74,6 +74,29 @@
         .step-cell.step-accent {
             border-color: rgba(148, 163, 184, 0.78);
         }
+        .seq-cell {
+            border: 1px solid rgba(71, 85, 105, 0.4);
+            background: rgba(15, 23, 42, 0.75);
+            transition: background 100ms ease, border-color 100ms ease, box-shadow 100ms ease, transform 100ms ease;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            height: 2.25rem;
+            user-select: none;
+            position: relative;
+        }
+        .seq-cell:hover:not(.seq-cell-active) {
+            border-color: rgba(100, 116, 139, 0.55);
+            background: rgba(30, 41, 59, 0.8);
+        }
+        .seq-cell.seq-playing {
+            box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7), 0 0 10px rgba(255, 255, 255, 0.18);
+        }
+        .seq-cell.seq-beat-accent {
+            border-color: rgba(148, 163, 184, 0.55);
+        }
         .shimmer {
             background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
             animation: shimmer 4s linear infinite;
@@ -275,6 +298,55 @@
             melancholy: ['A4', 'B4', 'C5', 'E5', 'F5'],
             dissonant: ['A4', 'Bb4', 'Db5', 'Eb5', 'Gb5'],
             all: ['A4', 'B4', 'C5', 'D5', 'E5', 'F5', 'G5', 'Ab5']
+        };
+
+        const TRACK_NAMES = ['Lead', 'Bass', 'Sub Bass', 'Pad', 'Accent'];
+        const TRACK_COLORS = {
+            Lead:       { text: '#f97316', activeBg: 'rgba(249,115,22,0.72)',  activeBgLit: 'rgba(249,115,22,1)',   activeBorder: 'rgba(251,146,60,0.9)'  },
+            Bass:       { text: '#38bdf8', activeBg: 'rgba(56,189,248,0.72)',  activeBgLit: 'rgba(56,189,248,1)',   activeBorder: 'rgba(125,211,252,0.9)' },
+            'Sub Bass': { text: '#818cf8', activeBg: 'rgba(99,102,241,0.72)',  activeBgLit: 'rgba(99,102,241,1)',   activeBorder: 'rgba(129,140,248,0.9)' },
+            Pad:        { text: '#c084fc', activeBg: 'rgba(168,85,247,0.72)',  activeBgLit: 'rgba(168,85,247,1)',   activeBorder: 'rgba(192,132,252,0.9)' },
+            Accent:     { text: '#34d399', activeBg: 'rgba(52,211,153,0.72)',  activeBgLit: 'rgba(52,211,153,1)',   activeBorder: 'rgba(110,231,183,0.9)' }
+        };
+
+        const getNotesForTrack = (trackName, moodName) => {
+            const mood = MOODS[moodName] || MOODS.SynthPop;
+            const songbook = SONGBOOKS[moodName] || SONGBOOKS.SynthPop;
+            const scale = SCALES[mood.scales] || SCALES.stable;
+            const allTones = [...new Set(songbook.progression.flatMap((c) => c.tones))];
+            const allChord = [...new Set(songbook.progression.flatMap((c) => c.chord))];
+            const allBass  = [...new Set(songbook.progression.map((c) => c.bass))];
+            switch (trackName) {
+                case 'Lead':     return scale;
+                case 'Bass':     return [...new Set([...allBass, ...allTones])];
+                case 'Sub Bass': return [...new Set(allBass)];
+                case 'Pad':      return [...new Set(allChord)];
+                case 'Accent':   return [...new Set([...scale, ...allChord])];
+                default:         return scale;
+            }
+        };
+
+        const buildDefaultGrid = () =>
+            Object.fromEntries(TRACK_NAMES.map((t) => [t, Array.from({ length: 16 }, () => ({ active: false, note: '' }))]));
+
+        const autoFillTrackRow = (trackName, moodName) => {
+            const notes = getNotesForTrack(trackName, moodName);
+            const mood  = MOODS[moodName] || MOODS.SynthPop;
+            const subBassPat = { CyberPunk: [0,4,8,12], VoidCore: [0,2,4,6,8,10,12,14], Ambient: [0], Glitch: [0,3,7,11,15], default: [0,8] };
+            const padPat     = { SynthPop: [0,4,8,12], Ambient: [0], CyberPunk: [0,8,12], LoFi: [0,7], Glitch: [0,3,6,10,14], VoidCore: [0,4,8,12] };
+            const accentPat  = { SynthPop: [0,8,12], Ambient: [8], CyberPunk: [2,6,10,14], LoFi: [3,11], Glitch: [1,4,7,9,13,15], VoidCore: [1,5,9,13] };
+            const activeStepsByTrack = {
+                Lead:       Array.from({ length: 16 }, () => Math.random() < mood.density),
+                Bass:       Array.from({ length: 16 }, (_, i) => mood.bassPattern.includes(i)),
+                'Sub Bass': Array.from({ length: 16 }, (_, i) => (subBassPat[moodName] || subBassPat.default).includes(i)),
+                Pad:        Array.from({ length: 16 }, (_, i) => (padPat[moodName]    || [0,4,8,12]).includes(i)),
+                Accent:     Array.from({ length: 16 }, (_, i) => (accentPat[moodName] || [0,8]).includes(i))
+            };
+            const active = activeStepsByTrack[trackName] || Array.from({ length: 16 }, () => Math.random() < 0.5);
+            return Array.from({ length: 16 }, (_, i) => ({
+                active: active[i],
+                note:   active[i] ? notes[Math.floor(Math.random() * notes.length)] || '' : (notes[0] || '')
+            }));
         };
 
         const MOOD_KEYS = Object.keys(MOODS);
@@ -836,6 +908,11 @@
             const [recordedFileName, setRecordedFileName] = useState('');
             const [recordingSeconds, setRecordingSeconds] = useState(0);
             const [logs, setLogs] = useState(['SYSTEM READY: Multi-Genre Kernel Loaded...']);
+            const [melodyGrid, setMelodyGrid] = useState(() => {
+                const stored = storedSettings.melodyGrid;
+                if (stored && TRACK_NAMES.every((t) => Array.isArray(stored[t]) && stored[t].length === 16)) return stored;
+                return buildDefaultGrid();
+            });
 
             const leadRef = useRef(null);
             const accentRef = useRef(null);
@@ -853,6 +930,7 @@
             const engineGenerationRef = useRef(0);
             const chunks = useRef([]);
             const recordingStartedAtRef = useRef(null);
+            const melodyGridRef = useRef(melodyGrid);
 
             const melodyMoodRef = useRef('SynthPop');
             const isPlayingRef = useRef(false);
@@ -909,6 +987,20 @@
             useEffect(() => { vocalGainRef.current = vocalGain; }, [vocalGain]);
             useEffect(() => { vocalBankRef.current = vocalBank; }, [vocalBank]);
             useEffect(() => { selectedVoiceURIRef.current = selectedVoiceURI; }, [selectedVoiceURI]);
+            useEffect(() => { melodyGridRef.current = melodyGrid; }, [melodyGrid]);
+            useEffect(() => {
+                setMelodyGrid((prev) => {
+                    const updated = {};
+                    for (const track of TRACK_NAMES) {
+                        const pool = getNotesForTrack(track, melodyMood);
+                        updated[track] = prev[track].map((cell) => ({
+                            ...cell,
+                            note: pool.includes(cell.note) ? cell.note : (pool[0] || '')
+                        }));
+                    }
+                    return updated;
+                });
+            }, [melodyMood]);
             useEffect(() => {
                 const lines = vocalBank[melodyMood]?.[lyricSection] || VOCAL_BANK[melodyMood]?.[lyricSection] || [];
                 setLyricDraft(formatVocalLines(lines));
@@ -932,12 +1024,13 @@
                         isDuetMode,
                         vocalGain,
                         selectedVoiceURI,
-                        vocalBank
+                        vocalBank,
+                        melodyGrid
                     }));
                 } catch (error) {
                     // Storage can fail in locked-down browser contexts.
                 }
-            }, [grooveAmount, isDuetMode, isVocalMode, masterVolume, melodyMood, selectedVoiceURI, tempo, vocalBank, vocalGain, vocalStyle]);
+            }, [grooveAmount, isDuetMode, isVocalMode, masterVolume, melodyGrid, melodyMood, selectedVoiceURI, tempo, vocalBank, vocalGain, vocalStyle]);
 
             useEffect(() => {
                 const nextTempo = Number(tempo);
@@ -1524,7 +1617,11 @@
 
                     triggerPercussionLayer(moodName, stepInBar, time, sectionName, isFillBar);
 
-                    if (mood.bassPattern.includes(stepInBar) && bassRef.current) {
+                    const gridBass = melodyGridRef.current?.Bass?.[stepInBar];
+                    if (gridBass?.active && bassRef.current) {
+                        if (stepInBar === 0) addLog(`BASS: Anchoring ${chord.root} Harmonic Field`);
+                        bassRef.current.triggerAttackRelease(gridBass.note, '8n', time, 0.68);
+                    } else if (mood.bassPattern.includes(stepInBar) && bassRef.current) {
                         let bassNote = chord.bass;
                         let bassDuration = '8n';
                         let bassVelocity = 0.68;
@@ -1561,24 +1658,37 @@
                         if (stepInBar === 0) addLog(`BASS: Anchoring ${chord.root} Harmonic Field`);
                     }
 
+                    const gridSubBass = melodyGridRef.current?.['Sub Bass']?.[stepInBar];
                     const subBassEvent = getSubBassEvent(moodName, chord, stepInBar, sectionName, isFillBar);
-                    if (subBassEvent && subBassRef.current) {
+                    if (gridSubBass?.active && subBassRef.current) {
+                        subBassRef.current.triggerAttackRelease(gridSubBass.note, '8n', time, 0.6);
+                    } else if (subBassEvent && subBassRef.current) {
                         subBassRef.current.triggerAttackRelease(subBassEvent.note, subBassEvent.duration, time, subBassEvent.velocity);
                     }
 
+                    const gridPad = melodyGridRef.current?.Pad?.[stepInBar];
                     const padEvent = getPadEvent(moodName, chord, stepInBar, sectionName, phraseBar, isFillBar);
-                    if (padEvent && padRef.current) {
+                    if (gridPad?.active && padRef.current) {
+                        if (padEvent?.reset) padRef.current.releaseAll(time);
+                        padRef.current.triggerAttackRelease([gridPad.note], '4n', time, 0.32);
+                    } else if (padEvent && padRef.current) {
                         if (padEvent.reset) padRef.current.releaseAll(time);
                         padRef.current.triggerAttackRelease(padEvent.notes, padEvent.duration, time, padEvent.velocity);
                     }
 
+                    const gridLead = melodyGridRef.current?.Lead?.[stepInBar];
                     const leadEvent = getLeadEvent(moodName, mood, chord, currentScale, stepInBar, barIndex, phraseState, sectionName, phraseBar, isFillBar);
-                    if (leadEvent && leadRef.current) {
+                    if (gridLead?.active && leadRef.current) {
+                        leadRef.current.triggerAttackRelease(gridLead.note, leadEvent?.duration || '8n', time, leadEvent?.velocity || 0.5);
+                    } else if (leadEvent && leadRef.current) {
                         leadRef.current.triggerAttackRelease(leadEvent.note, leadEvent.duration, time, leadEvent.velocity);
                     }
 
+                    const gridAccent = melodyGridRef.current?.Accent?.[stepInBar];
                     const accentEvent = getAccentEvent(moodName, mood, chord, currentScale, stepInBar, barIndex, phraseState, sectionName, isFillBar);
-                    if (accentEvent && accentRef.current) {
+                    if (gridAccent?.active && accentRef.current) {
+                        accentRef.current.triggerAttackRelease([gridAccent.note], '8n', time, 0.24);
+                    } else if (accentEvent && accentRef.current) {
                         accentRef.current.triggerAttackRelease(accentEvent.notes, accentEvent.duration, time, accentEvent.velocity);
                     }
                 }, '16n');
@@ -1775,6 +1885,42 @@
                     recorderRef.current.stop();
                     addLog('REC: Finalizing current take...');
                 }
+            };
+
+            const toggleGridStep = (track, step) => {
+                setMelodyGrid((prev) => {
+                    const cell = prev[track][step];
+                    const isNowActive = !cell.active;
+                    const pool = getNotesForTrack(track, melodyMoodRef.current);
+                    const note = isNowActive && !cell.note ? (pool[0] || '') : cell.note;
+                    return {
+                        ...prev,
+                        [track]: prev[track].map((c, i) => i === step ? { active: isNowActive, note } : c)
+                    };
+                });
+            };
+
+            const setGridNote = (track, step, note) => {
+                setMelodyGrid((prev) => ({
+                    ...prev,
+                    [track]: prev[track].map((c, i) => i === step ? { ...c, note } : c)
+                }));
+            };
+
+            const clearTrack = (track) => {
+                setMelodyGrid((prev) => ({
+                    ...prev,
+                    [track]: prev[track].map((c) => ({ ...c, active: false }))
+                }));
+                addLog(`SEQ: ${track.toUpperCase()} track cleared — procedural mode restored.`);
+            };
+
+            const autoFillGrid = (track) => {
+                setMelodyGrid((prev) => ({
+                    ...prev,
+                    [track]: autoFillTrackRow(track, melodyMoodRef.current)
+                }));
+                addLog(`SEQ: ${track.toUpperCase()} auto-filled for ${melodyMoodRef.current.toUpperCase()}.`);
             };
 
             return (
@@ -2110,6 +2256,115 @@
                                 </p>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <div className="w-full max-w-6xl mt-6">
+                    <div className="glass-panel rounded-[2rem] p-6 md:p-8">
+                        <div className="flex items-center gap-3 mb-5">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="2" y="4" width="3" height="16" rx="1"/><rect x="9" y="4" width="3" height="11" rx="1"/><rect x="16" y="4" width="3" height="8" rx="1"/><line x1="21" y1="20" x2="3" y2="20" strokeOpacity="0.4"/>
+                            </svg>
+                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.24em]">Melody Sequencer</h3>
+                            <span className="text-[8px] font-mono text-slate-600 uppercase tracking-[0.18em] ml-1 hidden md:inline">
+                                {melodyMood} · {MOODS[melodyMood].scales} scale · click cell to toggle · active cells override procedural
+                            </span>
+                        </div>
+
+                        <div className="space-y-2">
+                            {TRACK_NAMES.map((track) => {
+                                const colors = TRACK_COLORS[track];
+                                const notePool = getNotesForTrack(track, melodyMood);
+                                const trackSteps = melodyGrid[track];
+                                return (
+                                    <div key={track} className="flex items-center gap-2">
+                                        <div className="w-[68px] flex-shrink-0 text-right pr-1">
+                                            <span className="text-[8px] font-black uppercase tracking-[0.14em] font-mono leading-none" style={{ color: colors.text }}>
+                                                {track}
+                                            </span>
+                                        </div>
+
+                                        <div className="flex-1 grid gap-[3px]" style={{ gridTemplateColumns: 'repeat(16, 1fr)' }}>
+                                            {trackSteps.map((cell, step) => {
+                                                const isCurrentStep = transportStep === step;
+                                                const isActive = cell.active;
+                                                const isBeat = step % 4 === 0;
+                                                return (
+                                                    <div
+                                                        key={step}
+                                                        className={`seq-cell${isActive ? ' seq-cell-active' : ''}${isCurrentStep ? ' seq-playing' : ''}${isBeat && !isActive ? ' seq-beat-accent' : ''}`}
+                                                        style={isActive ? {
+                                                            background: isCurrentStep ? colors.activeBgLit : colors.activeBg,
+                                                            borderColor: colors.activeBorder,
+                                                            transform: isCurrentStep ? 'translateY(-2px)' : 'none',
+                                                            boxShadow: isCurrentStep ? `0 6px 16px ${colors.text}55` : 'none'
+                                                        } : {
+                                                            borderColor: isCurrentStep ? 'rgba(255,255,255,0.28)' : undefined,
+                                                            background: isCurrentStep ? 'rgba(255,255,255,0.06)' : undefined
+                                                        }}
+                                                        onClick={() => toggleGridStep(track, step)}
+                                                    >
+                                                        {isActive ? (
+                                                            <select
+                                                                value={cell.note}
+                                                                onChange={(e) => { e.stopPropagation(); setGridNote(track, step, e.target.value); }}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                style={{
+                                                                    background: 'transparent',
+                                                                    color: 'white',
+                                                                    border: 'none',
+                                                                    width: '100%',
+                                                                    textAlign: 'center',
+                                                                    fontSize: '8px',
+                                                                    cursor: 'pointer',
+                                                                    outline: 'none',
+                                                                    padding: '0',
+                                                                    appearance: 'none',
+                                                                    WebkitAppearance: 'none',
+                                                                    MozAppearance: 'none',
+                                                                    fontFamily: "'IBM Plex Mono', monospace",
+                                                                    fontWeight: 'bold',
+                                                                    letterSpacing: '0.02em'
+                                                                }}
+                                                            >
+                                                                {notePool.map((n) => (
+                                                                    <option key={n} value={n} style={{ background: '#0f172a', color: '#f8fafc' }}>{n}</option>
+                                                                ))}
+                                                            </select>
+                                                        ) : (
+                                                            <span className="text-[8px] font-mono" style={{ color: isCurrentStep ? 'rgba(255,255,255,0.6)' : 'rgba(100,116,139,0.7)' }}>
+                                                                {String(step + 1).padStart(2, '0')}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+
+                                        <div className="flex gap-1 flex-shrink-0">
+                                            <button
+                                                onClick={() => autoFillGrid(track)}
+                                                title="Auto-fill this track using the current mood's pattern"
+                                                className="px-2 py-1 text-[8px] font-black uppercase tracking-[0.14em] border border-slate-700/80 bg-slate-900/80 text-slate-400 rounded-md hover:border-slate-500 hover:text-slate-200 transition-all whitespace-nowrap"
+                                            >
+                                                Auto
+                                            </button>
+                                            <button
+                                                onClick={() => clearTrack(track)}
+                                                title="Clear all steps — restores full procedural mode for this track"
+                                                className="px-2 py-1 text-[8px] font-black uppercase tracking-[0.14em] border border-slate-700/80 bg-slate-900/80 text-slate-400 rounded-md hover:border-red-800 hover:text-red-300 transition-all whitespace-nowrap"
+                                            >
+                                                Clear
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <p className="mt-4 text-[8px] font-mono text-slate-700 uppercase tracking-[0.18em]">
+                            Active cells override procedural notes · inactive cells = full auto · clear all steps to restore procedural mode per track
+                        </p>
                     </div>
                 </div>
             );
